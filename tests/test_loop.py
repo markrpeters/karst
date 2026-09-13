@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import partial
 
-from agent_loop_guards import (
+from karst.harness.guards import (
     LoopDetector,
     ModelTurn,
     ScriptedModel,

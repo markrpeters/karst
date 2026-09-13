@@ -7,7 +7,7 @@ a real database — the suite stays offline and dependency-free.
 
 from __future__ import annotations
 
-from agent_loop_guards.loop_detector import LoopDetector
+from karst.harness.guards.loop_detector import LoopDetector
 
 
 class _Cursor:

@@ -60,7 +60,7 @@ class OllamaModel:
             import ollama
         except ImportError as exc:  # pragma: no cover - exercised only without the extra
             raise ImportError(
-                "OllamaModel needs the optional dependency: pip install 'agent-loop-guards[ollama]'"
+                "OllamaModel needs the optional dependency: pip install 'karst[ollama]'"
             ) from exc
         self._client = ollama.Client(host=host)
         self._model = model

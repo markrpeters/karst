@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 from functools import partial
 
-from agent_loop_guards import (
+from karst.harness.guards import (
     LoopDetector,
     ModelTurn,
     ScriptedModel,
@@ -161,7 +161,7 @@ def main() -> None:
     for title, guards, prompt, scripted in SCENARIOS:
         _banner(f"{title}\n   guard under test: {', '.join(guards)}")
         if args.model:
-            from agent_loop_guards import OllamaModel
+            from karst.harness.guards import OllamaModel
 
             def factory(m=args.model, h=args.host):
                 return OllamaModel(m, host=h)

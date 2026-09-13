@@ -6,7 +6,7 @@ RFC 5737 documentation ranges.
 
 from __future__ import annotations
 
-from agent_loop_guards.repetition_detector import (
+from karst.harness.guards.repetition_detector import (
     RepetitionResult,
     detect_repetition,
 )

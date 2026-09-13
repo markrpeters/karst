@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent_loop_guards.result_filter import (
+from karst.harness.guards.result_filter import (
     _is_separator_line,
     filter_tool_result,
 )

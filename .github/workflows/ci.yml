@@ -1,0 +1,61 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: pytest (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e '.[dev]'
+      - run: python -m pytest
+
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e '.[dev]'
+      - run: ruff check .
+
+  ip-scan:
+    name: ip_scan (data-hygiene gate)
+    runs-on: ubuntu-latest
+    env:
+      # Organisation-specific terms, regex alternatives joined with "|".
+      # Unset on fork PRs; the script then reports the step as skipped.
+      IP_SCAN_PRIVATE_TERMS: ${{ secrets.IP_SCAN_PRIVATE_TERMS }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Warn if private terms are not configured
+        if: env.IP_SCAN_PRIVATE_TERMS == ''
+        run: echo "::warning::IP_SCAN_PRIVATE_TERMS is unset; private-terms scan skipped"
+      - name: Scan tracked files
+        run: scripts/ip_scan.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/scan"
+      - name: Positive control (scanner must fail on a term known to be present)
+        env:
+          IP_SCAN_PRIVATE_TERMS: karst
+        run: |
+          if scripts/ip_scan.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/scan-positive" > "$RUNNER_TEMP/positive.log" 2>&1; then
+            echo "::error::positive control did not fail; private-terms path is dead"
+            cat "$RUNNER_TEMP/positive.log"
+            exit 1
+          fi
+          grep -q '^HIGH  private_terms' "$RUNNER_TEMP/positive.log"
+          echo "positive control OK: scanner failed on the control term as expected"

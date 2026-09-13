@@ -1,4 +1,4 @@
-"""agent-loop-guards — deterministic guards for tool-calling agent loops.
+"""karst.harness.guards — deterministic guards for tool-calling agent loops.
 
 Four guards that catch the failure modes small local models hit inside a
 tool-calling loop, plus a thinking-token stripper and a reference loop

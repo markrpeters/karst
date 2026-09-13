@@ -26,3 +26,7 @@ htmlcov/
 # Scan output and organisation-specific scan terms (never commit)
 scan-results/
 scripts/ip_scan.private
+
+# Local secrets and private notes (never commit)
+.env
+*.private

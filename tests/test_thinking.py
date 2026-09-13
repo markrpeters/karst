@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent_loop_guards.thinking import strip_thinking_tokens
+from karst.harness.guards.thinking import strip_thinking_tokens
 
 
 class TestStripThinkingTokens:

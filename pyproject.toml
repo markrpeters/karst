@@ -3,14 +3,14 @@ requires = ["hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agent-loop-guards"
+name = "karst"
 version = "0.1.0"
-description = "Deterministic guards for tool-calling agent loops: result filtering, error-loop detection, thread injection, repetition detection"
+description = "Reads parsed evidence and argues a verdict. First public component: the agent-loop guards."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
-authors = [{ name = "pricklypete" }]
-keywords = ["llm", "agent", "tool-calling", "ollama", "harness", "guardrails"]
+authors = [{ name = "Mark Peters" }]
+keywords = ["llm", "agent", "tool-calling", "ollama", "harness", "guardrails", "dfir", "forensics"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -37,7 +37,7 @@ ollama = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agent_loop_guards"]
+packages = ["src/karst"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

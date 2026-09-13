@@ -1,148 +1,142 @@
-# agent-loop-guards
+# Karst
 
-Deterministic guards for tool-calling agent loops. Four small, pure-Python
-modules that catch the failure modes small local models hit once they are
-given tools, plus a thinking-token stripper and a reference loop that shows
-where each guard plugs in. No LLM calls anywhere in the package; the whole
-test suite runs offline in under a second.
+Karst is the analyst layer of a digital-forensics pipeline: it reads parsed
+evidence and argues a verdict. A local language model does the reasoning, but a
+small model given a SQL tool and a question fails in predictable ways, so the
+model runs inside a harness of deterministic guards that catch those failures on
+every turn. This first public release ships only the guards, a thinking-token
+stripper, and a reference loop showing where each guard plugs in. The reasoning
+loop that argues the verdict is not in this release; see the roadmap. No LLM
+call anywhere in the package. The test suite runs offline in under a second.
 
-> **Status: v0 draft.** Extracted from a working incident-response analysis
-> harness where these guards run on every model turn. API may still move.
+In use since May 2026 inside a private pipeline running against real enterprise
+telemetry; the guards were built from failures observed there.
 
-## The problem
+## Why Karst?
 
-Give a 4B–30B local model a SQL tool and a question, and three things go wrong
-in the first ten iterations:
-
-1. **Context blow-up.** One query returns a 50-column table with a
-   multi-kilobyte raw-event string per row. The context window fills, and the
-   model loses whatever it was investigating.
-2. **The retry loop.** A query fails on a missing column. The error text is in
-   context, but the model re-issues the same query, verbatim, until its
-   iteration budget is gone.
-3. **Losing the thread.** After a few results land, the model stops calling
-   tools and summarises the last thing it saw, or it keeps querying one table
-   and never pivots to the related ones.
-
-And one that shows up at the end: **degenerate output**, where a quantized
-model locks into repeating the same table row or sentence until it hits the
-token limit. It looks complete at a glance.
-
-Each guard is a deterministic answer to one of these. They were built one at a
-time, each after watching the failure happen in traces, and each is a few
-dozen lines of code with no model in the loop.
+A karst landscape is a surface shaped by the water flowing beneath it, and an
+analyst's conclusions should likewise take their shape from the evidence
+underneath. It pairs with `.fulgurite`, a sealed, hash-chained evidence bundle
+(roadmap); Karst will read verdict inputs from it.
 
 ## 30-second demo
 
 ```bash
+pip install -e '.[dev]'
 python demo.py                    # no model, no GPU: replays scripted turns
 python demo.py --model qwen3:8b   # same three scenarios against a live Ollama server
 ```
 
-Each scenario runs the reference loop twice, unguarded then guarded, against
-a toy in-memory database whose errors use DuckDB wording, and prints the
-before/after numbers: context characters, injected notes, iterations.
+Each scenario runs the reference loop twice, unguarded then guarded, against a
+toy in-memory database whose errors use DuckDB wording:
 
-## Install
+```text
+A. Context blow-up: a 12-column table with a raw-event blob on every row
+   guard under test: result_filter
+  mode       iterations    tool_calls    context_chars    injections    end
+  unguarded  iterations=2  tool_calls=1  context_chars= 39388  injections=0  end=complete
+  guarded    iterations=2  tool_calls=1  context_chars=  1645  injections=0  end=complete
+  context saved by guards: 37743 chars
 
-```bash
-pip install agent-loop-guards            # runtime dependency: pydantic only
-pip install 'agent-loop-guards[ollama]'  # adds the optional Ollama-backed Model
+B. The retry loop: the same DuckDB binder error three times (the query referenced a column that does not exist)
+   guard under test: loop_detector
+  mode       iterations    tool_calls    context_chars    injections    end
+  unguarded  iterations=4  tool_calls=3  context_chars=   262  injections=0  end=complete
+  guarded    iterations=4  tool_calls=3  context_chars=   724  injections=2  end=complete
+    -> [loop_detector @ iter 1] HARNESS NOTE: Your last 2 queries failed with the same error — column 'alert.type' does not exist. Available columns matching 'alert': alert_category, alert_severity, alert_rule. Please revise your query using one of these columns.
+
+C. Losing the thread: one query, then a premature stop
+   guard under test: thread_injector, repetition_detector
+  mode       iterations    tool_calls    context_chars    injections    end
+  unguarded  iterations=2  tool_calls=1  context_chars=  4110  injections=0  end=complete
+  guarded    iterations=3  tool_calls=1  context_chars=  4466  injections=2  end=complete
+    -> [thread_injector @ iter 0] HARNESS NOTE: You have connection data. Look for associated alerts in the suricata table and check the files table ...
+    -> [thread_injector @ iter 1] HARNESS NOTE: You can still use your tools to gather more evidence before concluding. Have you checked all relevant data sources?
 ```
 
-Python 3.10+.
+## Architecture
+
+```mermaid
+flowchart LR
+    M[Model<br/>Ollama or scripted] <--> L[run_loop]
+    L <--> T[(Tools)]
+    T -- raw result --> RF[result_filter]
+    RF -- trimmed --> L
+    T -- error text --> LD[loop_detector]
+    LD -. HARNESS NOTE .-> L
+    L -- each iteration --> TI[thread_injector]
+    TI -. HARNESS NOTE .-> L
+    L -- final answer --> RD[repetition_detector]
+    RD -.-> V["Verdict (roadmap)"]
+    style V stroke-dasharray: 5 5
+```
+
+The guards are independent and sit at seams any loop already has: after every
+tool result, after every tool call, once per iteration, and on the final answer.
+Every injection is a `user` message prefixed `HARNESS NOTE:` so it shows in traces.
 
 ## Use it in your loop
 
-The guards are independent. Wire whichever ones you need at the seams your
-loop already has:
-
 ```python
 from functools import partial
-from agent_loop_guards import (
-    LoopDetector, ThreadInjector, detect_repetition, filter_tool_result,
-    strip_thinking_tokens,
-)
+from karst.harness.guards import LoopDetector, ThreadInjector, detect_repetition, filter_tool_result
 
-result_filter = partial(filter_tool_result, max_chars=2000)   # every tool result
-loop_detector = LoopDetector(window_size=5, threshold=2)      # after every tool call
-thread_injector = ThreadInjector(max_iterations=15)           # once per iteration
-
-for iteration in range(max_iterations):
-    turn = model.chat(messages, tools)
-    messages.append(turn.as_assistant_message())
-
+result_filter = partial(filter_tool_result, max_chars=2000)
+loop_detector, thread_injector = LoopDetector(window_size=5, threshold=2), ThreadInjector(max_iterations=15)
+for iteration in range(15):
+    turn = model.chat(messages, tools); messages.append(turn.as_assistant_message())
     for call in turn.tool_calls:
-        raw, ok = dispatch(call)                                # your tool dispatch
+        raw, ok = dispatch(call)                                   # your tool dispatch
         messages.append({"role": "tool", "content": result_filter(raw, call.name)})
         if note := loop_detector.record(call.name, raw, ok):
             messages.append({"role": "user", "content": note})
-
-    for note in thread_injector.check(iteration, bool(turn.tool_calls), sql=last_sql):
-        messages.append({"role": "user", "content": note})
-
-final = strip_thinking_tokens(last_assistant_text(messages))
-rep = detect_repetition(final)
-if rep.is_degenerate:
-    final = rep.cleaned_text
+    messages += [{"role": "user", "content": n} for n in thread_injector.check(iteration, bool(turn.tool_calls))]
+final = detect_repetition(last_assistant_text(messages)).cleaned_text
 ```
 
-Or use the reference loop directly:
-
-```python
-from agent_loop_guards import ScriptedModel, ModelTurn, ToolCall, run_loop
-
-model = ScriptedModel([
-    ModelTurn(tool_calls=[ToolCall("query_database", {"sql": "SELECT * FROM conn"})]),
-    ModelTurn(content="Two hosts talked to the same external address."),
-])
-result = run_loop(
-    model,
-    [{"role": "user", "content": "What happened?"}],
-    tools={"query_database": run_sql},
-    result_filter=result_filter,
-    loop_detector=loop_detector,
-    thread_injector=thread_injector,
-    repetition_detector=detect_repetition,
-)
-print(result.final_response, result.injections, result.termination_reason)
-```
-
-Swap `ScriptedModel` for `OllamaModel("qwen3:8b")` to drive a live local model
-through the same loop.
-
-## Modules
-
-| Module | Guard | Seam |
-|---|---|---|
-| `result_filter` | Truncates tool results at row/line boundaries, keeps the table header, flags known high-noise metadata columns. Guidance says "analyze this sample", not "refine your query" — the latter was observed to trigger re-query churn. | every tool result, before it enters context |
-| `loop_detector` | Sliding window of error signatures (exception type + failed column/table/function). On a repeat past the threshold, injects a diagnostic; with a database connection supplied, lists the columns or tables that actually exist. Classifies DuckDB-style binder, catalog and unknown-function errors, and does not trust a `success=True` flag when the result text reads as an error. | after every tool call |
-| `thread_injector` | Three one-shot triggers: first query against a known table (suggest what to correlate next), approaching the iteration ceiling (start concluding), an iteration with no tool calls on a non-final turn (tools are still available). | once per iteration |
-| `repetition_detector` | Detects phrase stutter, consecutive duplicate lines and over-repeated sentences in the final answer; truncates at the first repeat with an explicit marker. | on the final response |
-| `thinking` | Strips `<think>`, `<|channel>thought`, `<|thinking|>` and bracket-style reasoning blocks. | before repetition check and any downstream parsing |
-| `loop` | `run_loop` reference wiring, `Model` protocol, `ScriptedModel` (canned turns, default) and `OllamaModel` (optional, import-guarded). | — |
-
-`thread_injector.DEFAULT_TABLE_GUIDANCE` is keyed on Zeek/Suricata table
-names (`conn`, `http`, `files`, `dns`, `suricata`) purely as a documented
-example of the mapping's shape. Pass your own `table_guidance` in production.
+That snippet is the wiring for a loop you already own. If you do not have one,
+`run_loop` in `karst.harness.guards` is the reference implementation the demo
+and tests use; pass it the guards as keyword arguments and a `ScriptedModel`
+(canned turns) or `OllamaModel` (optional, import-guarded).
 
 ## Design notes
 
-- **Deterministic by construction.** Nothing in the package calls a model. A
-  guard that needs an LLM to decide whether the LLM is looping is not a guard.
-- **Injections are user messages.** Every diagnostic and nudge goes into the
-  conversation as a `user` turn prefixed `HARNESS NOTE:`, so it is visible in
-  traces and the model treats it as an instruction rather than as data.
-- **Fire once.** Table guidance fires once per table, urgency and the no-tool
-  nudge once per run. A guard that repeats itself becomes the noise it was
-  meant to remove.
-- **Duck-typed database access.** `LoopDetector` accepts any object with
-  `execute(sql, params).fetchall()`; the tests use a ten-line fake.
-- **Error strings are errors.** Many tool wrappers catch exceptions and return
-  `"Error: ..."` with a success flag set. The loop detector classifies on the
-  text, not the flag.
+Each guard was written after watching one failure mode in traces from a 4B to
+30B local model working an incident with a SQL tool. Each is a few dozen lines
+with no model in the loop.
 
-## Development
+| The model... | What was observed | Guard |
+|---|---|---|
+| **drowns** | One query returned a wide table with a multi-kilobyte raw-event string on every row. The context filled and the model lost what it was investigating. | `result_filter` truncates at row boundaries, keeps the header, flags a configurable list of high-noise columns, and tells the model to "analyze this sample". The earlier wording, "refine your query", caused re-query churn. |
+| **spins** | A query failed on a missing column. With the error text in context, the model re-issued the same query verbatim until its budget was gone. | `loop_detector` keeps a sliding window of error signatures. On a repeat past the threshold it injects a diagnostic that lists the columns or tables that actually exist. |
+| **drifts** | After a few results, the model stopped calling tools and summarised the last thing it saw, or kept querying one table and never pivoted. | `thread_injector` fires three one-shot nudges: what to correlate next, start concluding near the iteration ceiling, and tools are still available when a turn makes no call. |
+| **thinks aloud** | Reasoning models emit `<think>...</think>` spans before the answer, and that text was landing in the final output and in downstream parsing. | `thinking` strips `<think>...</think>` spans from model output so reasoning text never reaches the tool layer. |
+| **stutters** | A quantized model repeated one table row or sentence until the token limit. The output looked complete at a glance. | `repetition_detector` catches phrase stutter, duplicate lines and over-repeated sentences in the final answer and truncates at the first repeat with a marker. |
+
+Three rules hold across all five. Nothing in the package calls a model: a guard
+that needs an LLM to decide whether the LLM is looping is not a guard. Each
+nudge fires once: a guard that repeats itself becomes the noise it was meant to
+remove. Error strings are errors: the loop detector classifies on the result
+text, not the tool wrapper's success flag.
+
+## Roadmap
+
+- **Reason loop.** The analyst loop that turns guarded tool calls into an argued
+  verdict with cited evidence.
+- **Eval framework.** Replayable traces scored for correctness, not just
+  termination, so guard changes can be measured.
+- **`.fulgurite`.** A sealed, hash-chained evidence bundle the analyst layer
+  reads from and writes its verdict into.
+- **Open-format ingestors.** EVTX and KAPE output, Zeek logs, Plaso timelines.
+
+## Provenance
+
+This code was extracted from a larger private incident-response pipeline, where
+these guards run on every model turn. Identifiers were scrubbed, fixtures use
+RFC 5737 documentation addresses and invented names, and a scan gate enforces
+that in CI.
+
+## Development and CI
 
 ```bash
 pip install -e '.[dev]'
@@ -151,12 +145,21 @@ ruff check .
 scripts/ip_scan.sh     # data-hygiene gate; must report zero HIGH/MED hits
 ```
 
-`scripts/ip_scan.sh` greps every tracked text file for identifiers that would
-mark a real environment (ticket ids, vendor console URLs, corporate hostname
-schemes, e-mail addresses, private address ranges, home-directory paths) and
-fails on any hit. Test fixtures use RFC 5737 documentation addresses and
-invented hostnames so the gate needs no allowlist.
+CI runs the same three steps on Python 3.10 through 3.13. The scan greps every
+tracked text file for identifiers that mark a real environment. It also takes
+organisation-specific terms that must never appear in the script itself; supply
+them through the repository secret `IP_SCAN_PRIVATE_TERMS` as extended regexes
+joined with `|`:
+
+```bash
+gh secret set IP_SCAN_PRIVATE_TERMS --body 'acme-?corp|ACME\\|internal-project-name'
+```
+
+Locally, put the same terms in `scripts/ip_scan.private`, one per line; it is
+git-ignored. CI also runs a positive control: the scan must fail when the term
+list contains a word known to be in the repo, proving the private-terms path is
+live.
 
 ## License
 
-Apache-2.0. See `LICENSE`.
+Apache-2.0. Copyright 2026 Mark Peters. See `LICENSE`.
