@@ -156,9 +156,9 @@ gh secret set IP_SCAN_PRIVATE_TERMS --body 'acme-?corp|ACME\\|internal-project-n
 ```
 
 Locally, put the same terms in `scripts/ip_scan.private`, one per line; it is
-git-ignored. CI also runs a positive control: the scan must fail when the term
-list contains a word known to be in the repo, proving the private-terms path is
-live.
+git-ignored. CI also runs `scripts/ip_scan_selftest.sh`, a positive control
+that plants one fictional identifier per class in a throwaway repo and requires
+the scan to fail on each, and to exit non-zero when a pattern cannot run.
 
 ## License
 

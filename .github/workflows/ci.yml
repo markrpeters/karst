@@ -49,14 +49,10 @@ jobs:
         run: echo "::warning::IP_SCAN_PRIVATE_TERMS is unset; private-terms scan skipped"
       - name: Scan tracked files
         run: scripts/ip_scan.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/scan"
-      - name: Positive control (scanner must fail on a term known to be present)
-        env:
-          IP_SCAN_PRIVATE_TERMS: karst
-        run: |
-          if scripts/ip_scan.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/scan-positive" > "$RUNNER_TEMP/positive.log" 2>&1; then
-            echo "::error::positive control did not fail; private-terms path is dead"
-            cat "$RUNNER_TEMP/positive.log"
-            exit 1
-          fi
-          grep -q '^HIGH  private_terms' "$RUNNER_TEMP/positive.log"
-          echo "positive control OK: scanner failed on the control term as expected"
+
+  ip-scan-selftest:
+    name: ip_scan self-test (planted identifiers must fail)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: bash scripts/ip_scan_selftest.sh
