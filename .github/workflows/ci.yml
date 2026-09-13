@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,8 +18,8 @@ jobs:
       matrix:
         python: ["3.10", "3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install -e '.[dev]'
@@ -27,8 +28,8 @@ jobs:
   ruff:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: python -m pip install -e '.[dev]'
@@ -42,7 +43,7 @@ jobs:
       # Unset on fork PRs; the script then reports the step as skipped.
       IP_SCAN_PRIVATE_TERMS: ${{ secrets.IP_SCAN_PRIVATE_TERMS }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Warn if private terms are not configured
         if: env.IP_SCAN_PRIVATE_TERMS == ''
         run: echo "::warning::IP_SCAN_PRIVATE_TERMS is unset; private-terms scan skipped"
