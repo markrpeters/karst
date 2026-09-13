@@ -32,6 +32,17 @@ Each guard is a deterministic answer to one of these. They were built one at a
 time, each after watching the failure happen in traces, and each is a few
 dozen lines of code with no model in the loop.
 
+## 30-second demo
+
+```bash
+python demo.py                    # no model, no GPU: replays scripted turns
+python demo.py --model qwen3:8b   # same three scenarios against a live Ollama server
+```
+
+Each scenario runs the reference loop twice, unguarded then guarded, against
+a toy in-memory database whose errors use DuckDB wording, and prints the
+before/after numbers: context characters, injected notes, iterations.
+
 ## Install
 
 ```bash
