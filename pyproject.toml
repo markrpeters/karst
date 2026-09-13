@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-loop-guards"
+version = "0.1.0"
+description = "Deterministic guards for tool-calling agent loops: result filtering, error-loop detection, thread injection, repetition detection"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [{ name = "pricklypete" }]
+keywords = ["llm", "agent", "tool-calling", "ollama", "harness", "guardrails"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "pydantic>=2,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.5",
+]
+# The Ollama-backed Model implementation is import-guarded; install this
+# extra only if you want to drive the loop against a live local model.
+ollama = [
+    "ollama>=0.4",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_loop_guards"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "UP"]
+ignore = [
+    "E501",  # long lines in fixture strings and guidance text
+]
