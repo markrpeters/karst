@@ -155,8 +155,13 @@ joined with `|`. The scan line reports how many terms it loaded:
 gh secret set IP_SCAN_PRIVATE_TERMS --body 'acme-?corp|ACME\\|internal-project-name'
 ```
 
-Locally, put the same terms in `scripts/ip_scan.private`, one per line; it is
-git-ignored. CI also runs `scripts/ip_scan_selftest.sh`, a positive control
+**Local setup.** The private terms are the author's: an employer name, a
+hostname scheme, a case-id form. They live in a private repository and reach
+this one two ways. CI enforces them through the `IP_SCAN_PRIVATE_TERMS`
+secret, and `scripts/setup-private-terms.sh` fetches them into the git-ignored
+`scripts/ip_scan.private` and installs a pre-commit hook that refuses to
+commit unless they are loaded. In any other clone the script prints one line
+and exits, and the scanner runs its public classes only. CI also runs `scripts/ip_scan_selftest.sh`, a positive control
 that plants one fictional identifier per class in a throwaway repo and requires
 the scan to fail on each, and to exit non-zero when a pattern cannot run.
 

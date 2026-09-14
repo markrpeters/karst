@@ -40,8 +40,14 @@
 #   * A single backslash in a file is matched by "\\" in the pattern. "\\\\"
 #     matches two and silently misses DOMAIN\user and C:\Users\name.
 #
-# Usage: scripts/ip_scan.sh [repo-root] [out-dir]
+# Usage: scripts/ip_scan.sh [repo-root] [out-dir] [--require-private]
+#   --require-private  exit 3 if zero private terms were loaded (used by the
+#                      pre-commit hook installed by scripts/setup-private-terms.sh).
+#                      Without it a zero count prints a visible warning.
 set -uo pipefail
+REQUIRE_PRIVATE=0; ARGS=()
+for a in "$@"; do case "$a" in --require-private) REQUIRE_PRIVATE=1 ;; *) ARGS+=("$a") ;; esac; done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
 ROOT=${1:-$(cd "$(dirname "$0")/.." && pwd)}
 OUT=${2:-$ROOT/scan-results}
 SELF=scripts/ip_scan.sh
@@ -110,6 +116,12 @@ if [ -n "$PRIV_TERMS" ]; then
     scan HIGH private_terms -i "($PRIV_TERMS)"
 else
     printf '%-5s %-22s (skipped: no %s and IP_SCAN_PRIVATE_TERMS unset)\n' HIGH private_terms "$PRIVATE"
+    if [ "$REQUIRE_PRIVATE" -eq 1 ]; then
+        echo "REFUSED: --require-private is set but zero private terms were loaded."
+        echo "         Run scripts/setup-private-terms.sh (author) or drop the flag (public classes only)."
+        exit 3
+    fi
+    echo "WARNING: zero private terms loaded; public classes only. Author: run scripts/setup-private-terms.sh"
 fi
 
 # ---- MED: needs context to be harmless --------------------------------------
