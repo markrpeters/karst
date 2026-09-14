@@ -149,7 +149,7 @@ CI runs the same three steps on Python 3.10 through 3.13. The scan greps every
 tracked text file for identifiers that mark a real environment. It also takes
 organisation-specific terms that must never appear in the script itself; supply
 them through the repository secret `IP_SCAN_PRIVATE_TERMS` as extended regexes
-joined with `|`:
+joined with `|`. The scan line reports how many terms it loaded:
 
 ```bash
 gh secret set IP_SCAN_PRIVATE_TERMS --body 'acme-?corp|ACME\\|internal-project-name'

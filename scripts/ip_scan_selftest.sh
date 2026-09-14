@@ -14,7 +14,9 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCAN="$HERE/ip_scan.sh"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
-PRIV='fictional-employer|project zebra'
+# Pipe-joined regex alternatives exactly as CI supplies them; the middle term carries
+# its own "|" inside a group and must count as ONE term (3 terms total).
+PRIV='fictional-employer|proj(ect|) zebra|\bZBR[0-9]+\b'
 failures=0
 
 mkrepo() {  # mkrepo <dir> <planted line>
@@ -61,6 +63,13 @@ plant fail domain_user      'logon by CORP\jdoe at 09:14'
 plant fail hostnames        'endpoint DESKTOP-AB12CD isolated'
 plant pass public_ip        'resolver 8.8.8.8 answered'
 plant pass realdata_words   'this was tested on real customer data'
+
+echo "== term count: the private_terms line must report 3 terms for the 3-term list"
+if grep -q 'private_terms.*(3 terms)' "$T/private_terms.log"; then
+    echo "  3 terms counted"
+else
+    echo "  FAILED: term count not reported or wrong"; grep private_terms "$T/private_terms.log" | sed 's/^/      /'; failures=$((failures + 1))
+fi
 
 echo "== negative control: a clean tree must PASS"
 mkrepo "$T/clean" 'hello from 192.0.2.10 (RFC 5737 documentation range), contact dev@example.com'

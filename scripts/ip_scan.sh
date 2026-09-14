@@ -19,7 +19,10 @@
 #         one extended regex per line) or in the IP_SCAN_PRIVATE_TERMS
 #         environment variable (regex alternatives separated by "|"), which is
 #         how CI supplies them from a secret. Both are scanned as HIGH,
-#         case-insensitively.
+#         case-insensitively, and the summary line reports how many terms
+#         were loaded so an empty or truncated secret cannot pass as a full
+#         one. A term may carry its own "|" inside a group; only a "|" at
+#         parenthesis depth 0 separates terms.
 #   MED   would need context to be harmless — RFC1918 addresses, internal AD
 #         domains, DOMAIN\user tokens, generic hostname shapes. Test fixtures
 #         in this repo use RFC 5737 documentation addresses and invented
@@ -61,6 +64,7 @@ N=$(wc -l < "$OUT/files.txt")
 echo "scanning $N text files under $ROOT"
 
 FAIL=0
+SCAN_NOTE=""
 scan() {  # scan <severity> <name> [grep flags...] <pattern>
     local sev=$1 name=$2; shift 2
     # Per-pattern matcher: -P patterns must not also get -E.
@@ -77,7 +81,8 @@ scan() {  # scan <severity> <name> [grep flags...] <pattern>
     rm -f "$OUT/$name.err"
     local hits files
     hits=$(wc -l < "$OUT/$name.txt"); files=$(cut -d: -f1 "$OUT/$name.txt" | sort -u | wc -l)
-    printf '%-5s %-22s %4d hits %3d files\n' "$sev" "$name" "$hits" "$files"
+    printf '%-5s %-22s %4d hits %3d files%s\n' "$sev" "$name" "$hits" "$files" "${SCAN_NOTE:+  ($SCAN_NOTE)}"
+    SCAN_NOTE=""
     if [ "$hits" -gt 0 ] && [ "$sev" != LOW ]; then FAIL=1; fi
 }
 
@@ -99,6 +104,9 @@ if [ -f "$PRIVATE" ]; then
     PRIV_TERMS="${PRIV_TERMS:+$PRIV_TERMS|}$FILE_TERMS"
 fi
 if [ -n "$PRIV_TERMS" ]; then
+    # Count top-level alternatives: "|" at parenthesis depth 0; escaped chars skipped.
+    NTERMS=$(printf '%s' "$PRIV_TERMS" | awk 'BEGIN{d=0;n=1} {for(i=1;i<=length($0);i++){c=substr($0,i,1); if(c=="\\"){i++;continue} if(c=="(")d++; else if(c==")")d--; else if(c=="|"&&d==0)n++}} END{print n}')
+    SCAN_NOTE="$NTERMS terms"
     scan HIGH private_terms -i "($PRIV_TERMS)"
 else
     printf '%-5s %-22s (skipped: no %s and IP_SCAN_PRIVATE_TERMS unset)\n' HIGH private_terms "$PRIVATE"
